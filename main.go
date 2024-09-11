@@ -10,17 +10,17 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-func processHTMLFile(inputFile string) (string, error) {
+func processHTMLFile(inputFile string) (string, error, bool) {
 	// Чтение содержимого файла
 	data, err := ioutil.ReadFile(inputFile)
 	if err != nil {
-		return "", err
+		return "", err, false
 	}
 
 	// Создание нового документа из HTML
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(data)))
 	if err != nil {
-		return "", err
+		return "", err, false
 	}
 
 	// Найти все img теги и удалить атрибут crossorigin
@@ -31,35 +31,47 @@ func processHTMLFile(inputFile string) (string, error) {
 	// Получить измененный HTML
 	modifiedHTML, err := doc.Html()
 	if err != nil {
-		return "", err
+		return "", err, false
 	}
 
-	return modifiedHTML, nil
+	return modifiedHTML, nil, string(data) != modifiedHTML
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: <input_file>")
-		os.Exit(1)
-	}
-
-	inputFile := os.Args[1]
-	// Генерация имени выходного файла
-	// ext := filepath.Ext(inputFile)
-	// baseName := strings.TrimSuffix(inputFile, ext)
-	// outputFile := baseName + ".edited" + ext
-	outputFile := inputFile
-
-	modifiedHTML, err := processHTMLFile(inputFile)
+	cwd, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Error processing HTML file: %v", err)
+		log.Fatalf("Failed to get current working directory: %v", err)
 	}
 
-	// Запись измененного HTML в новый файл
-	err = ioutil.WriteFile(outputFile, []byte(modifiedHTML), 0644)
+	files, err := os.ReadDir(cwd)
 	if err != nil {
-		log.Fatalf("Error writing the modified HTML to file: %v", err)
+		log.Fatalf("Failed to read current working directory: %v", err)
 	}
 
-	fmt.Printf("Modified HTML saved to %s\n", outputFile)
+	htmlFiles := make([]string, 0)
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".html") {
+			htmlFiles = append(htmlFiles, file.Name())
+		}
+	}
+
+	if len(htmlFiles) == 0 {
+		log.Fatalf("No .html files in current directory")
+	}
+
+	for _, filename := range htmlFiles {
+		modifiedHTML, err, transformed := processHTMLFile(filename)
+		if err != nil {
+			log.Fatalf("Error processing HTML file: %v", err)
+		}
+
+		if !transformed {
+			continue
+		}
+		err = os.WriteFile(filename, []byte(modifiedHTML), 0644)
+		if err != nil {
+			log.Fatalf("Error writing the modified HTML to file: %v", err)
+		}
+		fmt.Printf("Modified HTML saved to %s\n", filename)
+	}
 }
